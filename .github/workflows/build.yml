@@ -27,10 +27,9 @@ jobs:
           echo "=== 2. 生成工程 ==="
           cd DouYinCleaner
           xcodegen generate
-          xcodebuild -project DouYinCleaner.xcodeproj -list
 
           echo "=== 3. Archive ==="
-          xcodebuild archive \
+          xcodebuild -quiet archive \
             -project DouYinCleaner.xcodeproj \
             -scheme DouYinCleaner \
             -archivePath build/DouYinCleaner.xcarchive \
@@ -42,11 +41,8 @@ jobs:
             DEVELOPMENT_TEAM="" \
             -allowProvisioningUpdates
 
-          echo "=== 4. 验证产物 ==="
-          ls -la build/DouYinCleaner.xcarchive/Products/Applications/
-          file build/DouYinCleaner.xcarchive/Products/Applications/DouYinCleaner.app/DouYinCleaner
-
-          echo "=== 5. 打包 ==="
+          echo "=== 4. 打包 ==="
+          ls build/DouYinCleaner.xcarchive/Products/Applications/DouYinCleaner.app/DouYinCleaner
           mkdir -p Payload
           cp -r build/DouYinCleaner.xcarchive/Products/Applications/DouYinCleaner.app Payload/
           zip -qr DouYinCleaner.tipa Payload
