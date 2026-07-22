@@ -25,8 +25,7 @@ jobs:
         working-directory: DouYinCleaner
         run: |
           xcodegen generate
-          echo "=== 检查生成的文件 ==="
-          ls -la DouYinCleaner.xcodeproj/
+          echo "=== Done ==="
 
       - name: Build archive
         working-directory: DouYinCleaner
@@ -40,9 +39,9 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             DEVELOPMENT_TEAM="" \
-            -allowProvisioningUpdates 2>&1 | tail -30
+            -allowProvisioningUpdates
 
-      -name: Package IPA
+      - name: Package IPA
         run: |
           mkdir -p Payload
           cp -r build/DouYinCleaner.xcarchive/Products/Applications/DouYinCleaner.app Payload/
