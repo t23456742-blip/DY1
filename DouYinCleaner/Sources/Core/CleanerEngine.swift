@@ -59,11 +59,12 @@ final class CleanerEngine {
 
         if level == .deep {
             let docsPath = "\(container)/Documents"
-            let keys: Set<URLResourceKey> = [.fileSizeKey]
-            if let enumerator = fm.enumerator(at: URL(fileURLWithPath: docsPath), includingPropertiesForKeys: keys, options: []) {
+            let enumKeys: [URLResourceKey] = [.fileSizeKey]
+            let valKeys: Set<URLResourceKey> = [.fileSizeKey]
+            if let enumerator = fm.enumerator(at: URL(fileURLWithPath: docsPath), includingPropertiesForKeys: enumKeys, options: []) {
                 for case let fileURL as URL in enumerator {
                     guard fileURL.pathExtension.lowercased() == "mp4" else { continue }
-                    guard let values = try? fileURL.resourceValues(forKeys: keys),
+                    guard let values = try? fileURL.resourceValues(forKeys: valKeys),
                           let size = values.fileSize, size > 10_485_760 else { continue }
                     do {
                         try fm.removeItem(at: fileURL)
