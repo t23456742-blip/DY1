@@ -36,34 +36,25 @@ final class FileScanner {
     /// 扫描所有抖音容器
     static func scanAll() -> [AppInfo] {
         var apps: [AppInfo] = []
-
-        guard let enumerator = FileManager.default.enumerator(
-            at: URL(fileURLWithPath: containerBase),
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) else { return apps }
-
-        for case let dirURL as URL in enumerator {
-            let metadataPath = dirURL.appendingPathComponent(".com.apple.mobile_container_manager.metadata.plist").path
-            guard FileManager.default.fileExists(atPath: metadataPath) else { continue }
-
+        let fm = FileManager.default
+        guard let uuids = try? fm.contentsOfDirectory(atPath: containerBase) else { return apps }
+        for uuid in uuids {
+            let dirPath = "\(containerBase)/\(uuid)"
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: dirPath, isDirectory: &isDir), isDir.boolValue else { continue }
+            let metadataPath = "\(dirPath)/.com.apple.mobile_container_manager.metadata.plist"
+            guard fm.fileExists(atPath: metadataPath) else { continue }
             guard let bid = extractBundleId(from: metadataPath) else { continue }
             guard targetBundleIds.contains(bid) else { continue }
-
-            let totalSize = directorySize(dirURL.path)
-            let cacheSize = estimateCacheSize(dirURL.path)
-
-            let app = AppInfo(
-                bundleId: bid,
-                containerPath: dirURL.path,
-                totalSize: totalSize,
-                cacheSize: cacheSize
-            )
-            apps.append(app)
-
-            // 跳过子目录枚举, 直接进入下一个 UUID 目录
-            enumerator.skipDescendants()
+            let totalSize = directorySize(dirPath)
+            let cacheSize = estimateCacheSize(dirPath)
+            apps.append(AppInfo(
+                bundleId: bid, containerPath: dirPath,
+                totalSize: totalSize, cacheSize: cacheSize
+            ))
         }
+        return apps.sorted { $0.totalSize > $1.totalSize }
+    }
 
         return apps.sorted { $0.totalSize > $1.totalSize }
     }
