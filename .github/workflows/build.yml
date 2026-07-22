@@ -15,38 +15,64 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install xcodegen
+      - name: Build IPA
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
           HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
-        run: brew install xcodegen
-
-      - name: Generate Xcode project
-        working-directory: DouYinCleaner
         run: |
+          set +e
+          echo "=== 1. 安装 xcodegen ==="
+          brew install xcodegen
+
+          echo "=== 2. 生成工程 ==="
+          cd DouYinCleaner
           xcodegen generate
-          echo "=== Done ==="
+          xcodebuild -project DouYinCleaner.xcodeproj -list
 
-      - name: Build archive
-        working-directory: DouYinCleaner
-        run: |
+          echo "=== 3. 编译 ==="
+          xcodebuild build \
+            -project DouYinCleaner.xcodeproj \
+            -scheme DouYinCleaner \
+            -destination "generic/platform=iOS" \
+            -configuration Debug \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            2>&1 | tee /tmp/build.log
+          BUILD_EXIT=$?
+
+          echo ""
+          echo "=== 错误摘要 ==="
+          grep -i "error:" /tmp/build.log || echo "(无错误)"
+
+          if [ $BUILD_EXIT -ne 0 ]; then
+            echo ""
+            echo "=== 完整 Swift 错误 ==="
+            grep -i -A5 "error:" /tmp/build.log | head -60
+            exit 1
+          fi
+
+          echo "=== 4. Archive ==="
           xcodebuild archive \
             -project DouYinCleaner.xcodeproj \
             -scheme DouYinCleaner \
             -archivePath ../build/DouYinCleaner.xcarchive \
             -destination "generic/platform=iOS" \
+            -configuration Release \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             DEVELOPMENT_TEAM="" \
             -allowProvisioningUpdates
 
-      - name: Package IPA
-        run: |
+          echo "=== 5. 打包 ==="
+          cd ..
           mkdir -p Payload
           cp -r build/DouYinCleaner.xcarchive/Products/Applications/DouYinCleaner.app Payload/
           zip -qr DouYinCleaner.tipa Payload
           ls -lh DouYinCleaner.tipa
+          echo "DONE"
 
       - name: Upload IPA
         uses: softprops/action-gh-release@v2
