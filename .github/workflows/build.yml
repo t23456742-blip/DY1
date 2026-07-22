@@ -15,20 +15,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: "16.0"
-
       - name: Install xcodegen
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
         run: brew install xcodegen
 
       - name: Generate Xcode project
-        run: cd DouYinCleaner && xcodegen generate
+        working-directory: DouYinCleaner
+        run: |
+          xcodegen generate
+          echo "=== 检查生成的文件 ==="
+          ls -la DouYinCleaner.xcodeproj/
 
       - name: Build archive
+        working-directory: DouYinCleaner
         run: |
-          cd DouYinCleaner
           xcodebuild archive \
             -project DouYinCleaner.xcodeproj \
             -scheme DouYinCleaner \
@@ -36,9 +38,11 @@ jobs:
             -destination "generic/platform=iOS" \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            -allowProvisioningUpdates 2>&1 | tail -30
 
-      - name: Package IPA
+      -name: Package IPA
         run: |
           mkdir -p Payload
           cp -r build/DouYinCleaner.xcarchive/Products/Applications/DouYinCleaner.app Payload/
@@ -51,3 +55,5 @@ jobs:
           tag_name: build-${{ github.run_number }}
           name: "Build #${{ github.run_number }}"
           files: DouYinCleaner.tipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
