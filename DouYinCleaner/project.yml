@@ -1,0 +1,42 @@
+name: DouYinCleaner
+options:
+  bundleIdPrefix: com.douyin.cleaner
+  deploymentTarget:
+    iOS: "15.0"
+  xcodeVersion: "15.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGNING_REQUIRED: NO
+    CODE_SIGNING_ALLOWED: NO
+    ENABLE_BITCODE: NO
+    IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+    INFOPLIST_FILE: Info.plist
+    PRODUCT_BUNDLE_IDENTIFIER: com.douyin.cleaner
+    PRODUCT_NAME: "抖音清理"
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+targets:
+  DouYinCleaner:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    resources:
+      - path: Resources
+    settings:
+      base:
+        INFOPLIST_FILE: Info.plist
+        CODE_SIGN_ENTITLEMENTS: Entitlements.plist
+        OTHER_CODE_SIGN_FLAGS: "--generate-entitlement-der"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) TROLLSTORE"
+    preBuildScripts:
+      - name: "Generate version"
+        script: |
+          VERSION=$(date +%Y%m%d-%H%M)
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$SRCROOT/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION:0:8}" "$SRCROOT/Info.plist"
