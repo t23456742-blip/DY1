@@ -59,7 +59,7 @@ final class CleanerEngine {
 
         if level == .deep {
             let docsPath = "\(container)/Documents"
-            let keys: [URLResourceKey] = [.fileSizeKey]
+            let keys: Set<URLResourceKey> = [.fileSizeKey]
             if let enumerator = fm.enumerator(at: URL(fileURLWithPath: docsPath), includingPropertiesForKeys: keys, options: []) {
                 for case let fileURL as URL in enumerator {
                     guard fileURL.pathExtension.lowercased() == "mp4" else { continue }
