@@ -36,7 +36,6 @@ final class FileScanner {
     /// 扫描所有抖音容器
     static func scanAll() -> [AppInfo] {
         var apps: [AppInfo] = []
-        guard let baseURL = URL(string: "file://\(containerBase)") else { return apps }
 
         guard let enumerator = FileManager.default.enumerator(
             at: URL(fileURLWithPath: containerBase),
@@ -54,7 +53,7 @@ final class FileScanner {
             let totalSize = directorySize(dirURL.path)
             let cacheSize = estimateCacheSize(dirURL.path)
 
-            var app = AppInfo(
+            let app = AppInfo(
                 bundleId: bid,
                 containerPath: dirURL.path,
                 totalSize: totalSize,

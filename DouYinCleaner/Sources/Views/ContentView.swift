@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// 主界面
 struct ContentView: View {
@@ -27,7 +28,7 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if case .ready = vm.state {
-                        Button("刷新") { Task { await vm.scan() } }
+                        Button("刷新") { vm.scan() }
                     }
                 }
             }
@@ -48,7 +49,7 @@ struct ContentView: View {
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
-            Button(action: { Task { await vm.scan() } }) {
+            Button(action: { vm.scan() }) {
                 Label("扫描抖音缓存", systemImage: "magnifyingglass")
                     .frame(maxWidth: 240)
             }
@@ -96,7 +97,7 @@ struct ContentView: View {
             }
 
             // 清理按钮
-            Button(action: { Task { await vm.clean() } }) {
+            Button(action: { vm.clean() }) {
                 Label("开始清理 (\(vm.selectedLevel.rawValue))", systemImage: "burst")
                     .frame(maxWidth: .infinity)
             }
@@ -235,7 +236,7 @@ struct ContentView: View {
 
             VStack(spacing: 8) {
                 Button {
-                    Task { await vm.scan() }
+                    vm.scan()
                 } label: {
                     Label("再来一次", systemImage: "arrow.counterclockwise")
                         .frame(maxWidth: .infinity)
@@ -270,7 +271,7 @@ struct ContentView: View {
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
-            Button("重试") { Task { await vm.scan() } }
+            Button("重试") { vm.scan() }
                 .buttonStyle(.borderedProminent)
             Spacer()
         }

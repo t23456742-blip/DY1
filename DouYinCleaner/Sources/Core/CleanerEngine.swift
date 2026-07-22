@@ -2,7 +2,6 @@ import Foundation
 
 /// 清理引擎 — 执行实际的目录清理
 final class CleanerEngine {
-    private let fm = FileManager.default
 
     /// 清理单个 App 容器
     func clean(app: AppInfo, level: CleanLevel) -> CleanResult {
