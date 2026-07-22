@@ -1,84 +1,63 @@
 import Foundation
+import Darwin
 
-/// 清理引擎 — 执行实际的目录清理
+/// 清理引擎 — 用 rm -rf，跟扫描器一样走 shell
 final class CleanerEngine {
-    private var fm: FileManager { FileManager.default }
 
-    /// 清理单个 App 容器
     func clean(app: AppInfo, level: CleanLevel) -> CleanResult {
         let paths = FileScanner.paths(for: level)
         let container = app.containerPath
-        let beforeBytes = FileScanner.directorySize(container)
+        let beforeBytes = FileScanner.duSize(container)
 
         var cleaned: [CleanPathDetail] = []
         var errors: [String] = []
 
         for (relPath, description) in paths {
             let fullPath = "\(container)/\(relPath)"
-            if relPath.hasSuffix("/*") {
-                let basePath = String(relPath.dropLast(2))
-                let base = "\(container)/\(basePath)"
-                guard fm.fileExists(atPath: base) else { continue }
-                do {
-                    let items = try fm.contentsOfDirectory(atPath: base)
-                    for item in items {
-                        let itemPath = "\(base)/\(item)"
-                        let size = FileScanner.directorySize(itemPath)
-                        if size > 0 {
-                            do {
-                                try fm.removeItem(atPath: itemPath)
-                                cleaned.append(CleanPathDetail(path: itemPath, description: description, bytesFreed: size, success: true))
-                            } catch { errors.append("删除失败: \(itemPath)") }
-                        }
-                    }
-                } catch { errors.append("读取目录失败: \(base)") }
-                continue
-            }
-            guard fm.fileExists(atPath: fullPath) else { continue }
-            let size = FileScanner.directorySize(fullPath)
-            guard size > 0 else { continue }
-            do {
-                try fm.removeItem(atPath: fullPath)
-                cleaned.append(CleanPathDetail(path: relPath, description: description, bytesFreed: size, success: true))
-            } catch {
-                do {
-                    let items = try fm.contentsOfDirectory(atPath: fullPath)
-                    var subTotal: Int64 = 0
-                    for item in items {
-                        let ip = "\(fullPath)/\(item)"
-                        let sz = FileScanner.directorySize(ip)
-                        do { try fm.removeItem(atPath: ip); subTotal += sz }
-                        catch { errors.append("删除失败: \(ip)") }
-                    }
-                    if subTotal > 0 {
-                        cleaned.append(CleanPathDetail(path: relPath, description: description, bytesFreed: subTotal, success: true))
-                    }
-                } catch { errors.append("路径失败: \(relPath)") }
+            let beforeSize = FileScanner.duSize(fullPath)
+            guard beforeSize > 1024 else { continue }
+
+            let result = sh("rm -rf '\(fullPath)' 2>&1")
+            if result.isEmpty {
+                cleaned.append(CleanPathDetail(path: relPath, description: description, bytesFreed: beforeSize, success: true))
+            } else {
+                errors.append("删除失败 \(relPath): \(result)")
             }
         }
 
+        // 深度: 删 >10MB 视频
         if level == .deep {
-            let docsPath = "\(container)/Documents"
-            let enumKeys: [URLResourceKey] = [.fileSizeKey]
-            let valKeys: Set<URLResourceKey> = [.fileSizeKey]
-            if let enumerator = fm.enumerator(at: URL(fileURLWithPath: docsPath), includingPropertiesForKeys: enumKeys, options: []) {
-                for case let fileURL as URL in enumerator {
-                    guard fileURL.pathExtension.lowercased() == "mp4" else { continue }
-                    guard let values = try? fileURL.resourceValues(forKeys: valKeys),
-                          let size = values.fileSize, size > 10_485_760 else { continue }
-                    do {
-                        try fm.removeItem(at: fileURL)
-                        cleaned.append(CleanPathDetail(path: fileURL.path, description: "大视频缓存", bytesFreed: Int64(size), success: true))
-                    } catch { errors.append("删除视频失败: \(fileURL.lastPathComponent)") }
+            let findResult = sh("find '\(container)/Documents' -name '*.mp4' -size +10M 2>/dev/null")
+            for line in findResult.components(separatedBy: .newlines) where !line.isEmpty {
+                let videoPath = line.trimmingCharacters(in: .whitespaces)
+                let vs = FileScanner.duSize(videoPath)
+                let del = sh("rm -f '\(videoPath)' 2>&1")
+                if del.isEmpty {
+                    cleaned.append(CleanPathDetail(path: videoPath, description: "大视频缓存", bytesFreed: vs, success: true))
+                } else {
+                    errors.append("删除视频失败: \(videoPath)")
                 }
             }
         }
 
-        let afterBytes = FileScanner.directorySize(container)
+        let afterBytes = FileScanner.duSize(container)
         let freed = max(0, beforeBytes - afterBytes)
+
         return CleanResult(
             freedBytes: freed, beforeBytes: beforeBytes, afterBytes: afterBytes,
             cleanedPaths: cleaned, errors: errors
         )
+    }
+
+    private func sh(_ cmd: String) -> String {
+        let fp = popen(cmd, "r")
+        guard fp != nil else { return "" }
+        var out = ""
+        var buf = [CChar](repeating: 0, count: 4096)
+        while fgets(&buf, Int32(buf.count), fp) != nil {
+            out += String(cString: buf)
+        }
+        pclose(fp)
+        return out.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

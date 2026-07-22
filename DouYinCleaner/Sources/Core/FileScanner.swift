@@ -1,6 +1,7 @@
 import Foundation
+import Darwin
 
-/// 扫描器 — 在 /var/mobile/Containers/Data/Application 中查找抖音相关容器
+/// 扫描器 — 用 shell 命令绕沙箱，跟 FUCK 工具箱同原理
 final class FileScanner {
     static let containerBase = "/var/mobile/Containers/Data/Application"
 
@@ -32,60 +33,78 @@ final class FileScanner {
         ("Documents/persistence/video", "视频持久化"),
     ]
 
+    // MARK: - Shell 工具 (绕沙箱)
+    private static func sh(_ cmd: String) -> String {
+        let fp = popen(cmd, "r")
+        guard fp != nil else { return "" }
+        var out = ""
+        var buf = [CChar](repeating: 0, count: 4096)
+        while fgets(&buf, Int32(buf.count), fp) != nil {
+            out += String(cString: buf)
+        }
+        pclose(fp)
+        return out.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // MARK: - 扫描
     static func scanAll() -> [AppInfo] {
         var apps: [AppInfo] = []
-        let fm = FileManager.default
-        guard let uuids = try? fm.contentsOfDirectory(atPath: containerBase) else { return apps }
-        for uuid in uuids {
-            let dirPath = "\(containerBase)/\(uuid)"
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: dirPath, isDirectory: &isDir), isDir.boolValue else { continue }
-            let metadataPath = "\(dirPath)/.com.apple.mobile_container_manager.metadata.plist"
-            guard fm.fileExists(atPath: metadataPath) else { continue }
-            guard let bid = extractBundleId(from: metadataPath) else { continue }
+
+        let ls = sh("ls '\(containerBase)' 2>/dev/null")
+        guard !ls.isEmpty else { return apps }
+
+        for uuid in ls.components(separatedBy: .newlines) where !uuid.isEmpty {
+            let dir = "\(containerBase)/\(uuid)"
+            // 确认是目录
+            let test = sh("test -d '\(dir)' && echo 1 || echo 0")
+            guard test == "1" else { continue }
+
+            // 检查元数据文件
+            let meta = "\(dir)/.com.apple.mobile_container_manager.metadata.plist"
+            guard sh("test -f '\(meta)' && echo 1") == "1" else { continue }
+
+            // 用 plutil 解析 Bundle ID
+            let plist = sh("plutil -p '\(meta)' 2>/dev/null")
+            guard let bid = extractBid(from: plist) else { continue }
             guard targetBundleIds.contains(bid) else { continue }
-            let totalSize = directorySize(dirPath)
-            let cacheSize = estimateCacheSize(dirPath)
-            apps.append(AppInfo(bundleId: bid, containerPath: dirPath, totalSize: totalSize, cacheSize: cacheSize))
+
+            // 用 du 获取大小
+            let totalSize = Int64(sh("du -sk '\(dir)' 2>/dev/null | awk '{print $1}'")) ?? 0
+            let totalSizeBytes = totalSize * 1024
+            let cacheSize = estimateCacheSize(dir)
+
+            apps.append(AppInfo(
+                bundleId: bid, containerPath: dir,
+                totalSize: totalSizeBytes, cacheSize: cacheSize
+            ))
         }
         return apps.sorted { $0.totalSize > $1.totalSize }
     }
 
-    private static func extractBundleId(from path: String) -> String? {
-        guard let dict = NSDictionary(contentsOfFile: path),
-              let id = dict["MCMMetadataIdentifier"] as? String else {
-            guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
-                  let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any],
-                  let bid = plist["MCMMetadataIdentifier"] as? String else { return nil }
-            return bid
+    private static func extractBid(from plist: String) -> String? {
+        for line in plist.components(separatedBy: .newlines) {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            guard t.contains("MCMMetadataIdentifier") else { continue }
+            // plutil -p 格式: "MCMMetadataIdentifier" => "com.xxx.yyy"
+            let parts = t.components(separatedBy: "\"")
+            if parts.count >= 4 { return parts[3] }
         }
-        return id
+        return nil
     }
 
     static func estimateCacheSize(_ container: String) -> Int64 {
         var total: Int64 = 0
         for (rel, _) in safePaths + standardPaths + deepPaths {
-            total += directorySize("\(container)/\(rel)")
+            let kb = sh("du -sk '\(container)/\(rel)' 2>/dev/null | awk '{print $1}'")
+            if let k = Int64(kb) { total += k * 1024 }
         }
         return total
     }
 
-    static func directorySize(_ path: String) -> Int64 {
-        guard FileManager.default.fileExists(atPath: path) else { return 0 }
-        var total: Int64 = 0
-        guard let enumerator = FileManager.default.enumerator(
-            at: URL(fileURLWithPath: path),
-            includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey],
-            options: []
-        ) else { return 0 }
-        for case let fileURL as URL in enumerator {
-            do {
-                let values = try fileURL.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey])
-                if values.isDirectory == true { continue }
-                if let size = values.fileSize { total += Int64(size) }
-            } catch { continue }
-        }
-        return total
+    /// 用 du -sk 获取目录字节数
+    static func duSize(_ path: String) -> Int64 {
+        let kb = sh("du -sk '\(path)' 2>/dev/null | awk '{print $1}'")
+        return (Int64(kb) ?? 0) * 1024
     }
 
     static func paths(for level: CleanLevel) -> [(String, String)] {
