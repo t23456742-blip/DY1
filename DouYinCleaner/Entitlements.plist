@@ -6,15 +6,11 @@
 	<true/>
 	<key>com.apple.private.security.no-container</key>
 	<true/>
-	<key>com.apple.private.security.storage.AppBundles</key>
+	<key>com.apple.private.MobileContainerManager.allowed</key>
 	<true/>
 	<key>com.apple.private.security.storage.AppDataContainers</key>
 	<true/>
-	<key>com.apple.private.MobileContainerManager.allowed</key>
-	<true/>
 	<key>com.apple.private.security.exception.files.absolute-path.read-write</key>
-	<true/>
-	<key>com.apple.private.security.container-required</key>
 	<true/>
 	<key>com.apple.security.get-task-allow</key>
 	<true/>
@@ -26,10 +22,14 @@
 	<true/>
 	<key>com.apple.system-task-ports</key>
 	<true/>
+	<key>com.apple.security.exception.mach-lookup.global-name</key>
+	<array>
+		<string>com.opa334.jailbreakd</string>
+		<string>com.opa334.Dopamine</string>
+	</array>
 	<key>com.apple.private.tcc.allow</key>
 	<array>
 		<string>kTCCServiceSystemPolicyAllFiles</string>
-		<string>kTCCServiceUbiquity</string>
 	</array>
 	<key>com.apple.developer.associated-domains</key>
 	<array/>

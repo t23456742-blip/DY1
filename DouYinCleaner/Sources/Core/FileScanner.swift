@@ -1,59 +1,87 @@
 import Foundation
 
-/// 扫描器 - 用 LSApplicationWorkspace 私有 API
 final class FileScanner {
+    static let containerBase = "/var/mobile/Containers/Data/Application"
     static let targetBundleIds = [
-        "com.ss.iphone.ugc.Aweme",
-        "com.ss.iphone.ugc.Live",
-        "com.ss.iphone.ugc.Lite",
-        "com.zhiliaoapp.musically",
+        "com.ss.iphone.ugc.Aweme", "com.ss.iphone.ugc.Live",
+        "com.ss.iphone.ugc.Lite", "com.zhiliaoapp.musically",
     ]
-
     static let safePaths: [(String, String)] = [
-        ("Library/Caches", "应用缓存"),
-        ("tmp", "临时文件"),
-        ("Library/SplashBoard", "启动图快照"),
-        ("Library/Caches/Snapshots", "多任务快照"),
+        ("Library/Caches", "应用缓存"), ("tmp", "临时文件"),
+        ("Library/SplashBoard", "启动图快照"), ("Library/Caches/Snapshots", "多任务快照"),
     ]
     static let standardPaths: [(String, String)] = [
-        ("Library/WebKit", "WebView 缓存"),
-        ("Library/Cookies", "过期 Cookie"),
-        ("Documents/aweme_stat", "统计数据"),
-        ("Documents/aweme_log", "日志文件"),
-        ("Documents/BDHLog", "下载日志"),
-        ("Documents/offline_pkg", "离线包缓存"),
+        ("Library/WebKit", "WebView 缓存"), ("Library/Cookies", "过期 Cookie"),
+        ("Documents/aweme_stat", "统计数据"), ("Documents/aweme_log", "日志文件"),
+        ("Documents/BDHLog", "下载日志"), ("Documents/offline_pkg", "离线包缓存"),
     ]
     static let deepPaths: [(String, String)] = [
-        ("Documents/aweme_video_cache", "视频预加载"),
-        ("Documents/persistence/video", "视频持久化"),
+        ("Documents/aweme_video_cache", "视频预加载"), ("Documents/persistence/video", "视频持久化"),
     ]
 
-    /// 扫描: 通过 LSApplicationWorkspace 获取已安装 App 容器
     static func scanAll() -> [AppInfo] {
+        // 方式1: LSApplicationWorkspace (iOS 16+)
+        if let apps = scanViaWorkspace(), !apps.isEmpty { return apps }
+        // 方式2: posix_spawn ls
+        if let apps = scanViaPosix(), !apps.isEmpty { return apps }
+        return []
+    }
+
+    private static func scanViaWorkspace() -> [AppInfo]? {
+        guard let cls = NSClassFromString("LSApplicationWorkspace") as? NSObject.Type else { return nil }
+        guard let ws = cls.perform(NSSelectorFromString("defaultWorkspace"))?.takeUnretainedValue() as? NSObject else { return nil }
+        // iOS 16 用的是 allInstalledApplications
+        let selName = responds(ws, "allInstalledApplications") ? "allInstalledApplications" : "allApplications"
+        guard let list = ws.perform(NSSelectorFromString(selName))?.takeUnretainedValue() as? [NSObject] else { return nil }
+
         var apps: [AppInfo] = []
-        guard let cls = NSClassFromString("LSApplicationWorkspace") as? NSObject.Type else { return apps }
-        guard let ws = cls.perform(NSSelectorFromString("defaultWorkspace"))?.takeUnretainedValue() as? NSObject else { return apps }
-        guard let allApps = ws.perform(NSSelectorFromString("allApplications"))?.takeUnretainedValue() as? [NSObject] else { return apps }
-
-        for appProxy in allApps {
-            guard let bid = appProxy.perform(NSSelectorFromString("applicationIdentifier"))?.takeUnretainedValue() as? String else { continue }
+        for proxy in list {
+            guard let bid = proxy.perform(NSSelectorFromString("applicationIdentifier"))?.takeUnretainedValue() as? String else { continue }
             guard targetBundleIds.contains(bid) else { continue }
-
-            // 数据容器路径
-            var containerPath = "/var/mobile/Containers/Data/Application/" + bid // fallback
-            if let urlVal = appProxy.perform(NSSelectorFromString("dataContainerURL"))?.takeUnretainedValue() {
-                if let url = urlVal as? URL, url.path.hasPrefix("/") {
-                    containerPath = url.path
-                }
+            var path = ""
+            if responds(proxy, "dataContainerURL"),
+               let u = proxy.perform(NSSelectorFromString("dataContainerURL"))?.takeUnretainedValue() as? URL {
+                path = u.path
+            } else if responds(proxy, "containerURL"),
+                      let u = proxy.perform(NSSelectorFromString("containerURL"))?.takeUnretainedValue() as? URL {
+                path = u.path
             }
-
-            let total = FileScanner.sh("du -sk '\(containerPath)' 2>/dev/null | awk '{print $1}'")
-            let totalKb = Int64(total) ?? 0
-            let cache = estimateCacheSize(containerPath)
-
-            apps.append(AppInfo(bundleId: bid, containerPath: containerPath, totalSize: totalKb * 1024, cacheSize: cache))
+            guard !path.isEmpty else { continue }
+            let kb = Int64(sh("du -sk '\(path)' 2>/dev/null | awk '{print $1}'")) ?? 0
+            let cs = estimateCacheSize(path)
+            apps.append(AppInfo(bundleId: bid, containerPath: path, totalSize: kb * 1024, cacheSize: cs))
         }
         return apps.sorted { $0.totalSize > $1.totalSize }
+    }
+
+    private static func scanViaPosix() -> [AppInfo]? {
+        let output = sh("ls '\(containerBase)' 2>/dev/null")
+        guard !output.isEmpty else { return nil }
+        var apps: [AppInfo] = []
+        for uuid in output.components(separatedBy: .newlines) where uuid.count > 30 {
+            let dir = "\(containerBase)/\(uuid)"
+            guard sh("test -d '\(dir)' && echo 1") == "1" else { continue }
+            let meta = "\(dir)/.com.apple.mobile_container_manager.metadata.plist"
+            let plist = sh("plutil -p '\(meta)' 2>/dev/null; test -f '\(meta)' && plutil -p '\(meta)' || echo ''")
+            guard plist.contains("MCMMetadataIdentifier") else { continue }
+            guard let bid = extractBid(plist), targetBundleIds.contains(bid) else { continue }
+            let kb = Int64(sh("du -sk '\(dir)' 2>/dev/null | awk '{print $1}'")) ?? 0
+            let cs = estimateCacheSize(dir)
+            apps.append(AppInfo(bundleId: bid, containerPath: dir, totalSize: kb * 1024, cacheSize: cs))
+        }
+        return apps.isEmpty ? nil : apps.sorted { $0.totalSize > $1.totalSize }
+    }
+
+    private static func extractBid(_ plist: String) -> String? {
+        for line in plist.components(separatedBy: .newlines) {
+            guard line.contains("MCMMetadataIdentifier") else { continue }
+            let p = line.components(separatedBy: "\""); if p.count >= 4 { return p[3] }
+        }
+        return nil
+    }
+
+    private static func responds(_ obj: NSObject, _ sel: String) -> Bool {
+        obj.responds(to: NSSelectorFromString(sel))
     }
 
     static func estimateCacheSize(_ c: String) -> Int64 {
@@ -76,7 +104,6 @@ final class FileScanner {
         }
     }
 
-    // MARK: - posix_spawn shell
     static func sh(_ cmd: String) -> String {
         let argv: [UnsafeMutablePointer<CChar>?] = [strdup("/bin/sh"), strdup("-c"), strdup(cmd), nil]
         defer { for a in argv { free(a) } }
