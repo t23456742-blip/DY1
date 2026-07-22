@@ -11,7 +11,6 @@ final class FileScanner {
         "com.zhiliaoapp.musically",
     ]
 
-    // 各清理级别的目标路径 (相对于容器根目录)
     static let safePaths: [(String, String)] = [
         ("Library/Caches", "应用缓存"),
         ("tmp", "临时文件"),
@@ -33,7 +32,6 @@ final class FileScanner {
         ("Documents/persistence/video", "视频持久化"),
     ]
 
-    /// 扫描所有抖音容器
     static func scanAll() -> [AppInfo] {
         var apps: [AppInfo] = []
         let fm = FileManager.default
@@ -48,22 +46,14 @@ final class FileScanner {
             guard targetBundleIds.contains(bid) else { continue }
             let totalSize = directorySize(dirPath)
             let cacheSize = estimateCacheSize(dirPath)
-            apps.append(AppInfo(
-                bundleId: bid, containerPath: dirPath,
-                totalSize: totalSize, cacheSize: cacheSize
-            ))
+            apps.append(AppInfo(bundleId: bid, containerPath: dirPath, totalSize: totalSize, cacheSize: cacheSize))
         }
         return apps.sorted { $0.totalSize > $1.totalSize }
     }
 
-        return apps.sorted { $0.totalSize > $1.totalSize }
-    }
-
-    /// 从 metadata plist 提取 Bundle ID
     private static func extractBundleId(from path: String) -> String? {
         guard let dict = NSDictionary(contentsOfFile: path),
               let id = dict["MCMMetadataIdentifier"] as? String else {
-            // 尝试 PropertyListSerialization
             guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
                   let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any],
                   let bid = plist["MCMMetadataIdentifier"] as? String else { return nil }
@@ -72,7 +62,6 @@ final class FileScanner {
         return id
     }
 
-    /// 估算可清理缓存大小
     static func estimateCacheSize(_ container: String) -> Int64 {
         var total: Int64 = 0
         for (rel, _) in safePaths + standardPaths + deepPaths {
@@ -81,7 +70,6 @@ final class FileScanner {
         return total
     }
 
-    /// 目录大小
     static func directorySize(_ path: String) -> Int64 {
         guard FileManager.default.fileExists(atPath: path) else { return 0 }
         var total: Int64 = 0
@@ -90,20 +78,16 @@ final class FileScanner {
             includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey],
             options: []
         ) else { return 0 }
-
         for case let fileURL as URL in enumerator {
             do {
-                let resourceValues = try fileURL.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey])
-                if resourceValues.isDirectory == true { continue }
-                if let size = resourceValues.fileSize {
-                    total += Int64(size)
-                }
+                let values = try fileURL.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey])
+                if values.isDirectory == true { continue }
+                if let size = values.fileSize { total += Int64(size) }
             } catch { continue }
         }
         return total
     }
 
-    /// 获取清理路径列表
     static func paths(for level: CleanLevel) -> [(String, String)] {
         switch level {
         case .safe:    return safePaths
