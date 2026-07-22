@@ -20,7 +20,7 @@ jobs:
           HOMEBREW_NO_AUTO_UPDATE: "1"
           HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
         run: |
-          set +e
+          set -e
           echo "=== 1. 安装 xcodegen ==="
           brew install xcodegen
 
@@ -29,35 +29,11 @@ jobs:
           xcodegen generate
           xcodebuild -project DouYinCleaner.xcodeproj -list
 
-          echo "=== 3. 编译 ==="
-          xcodebuild build \
-            -project DouYinCleaner.xcodeproj \
-            -scheme DouYinCleaner \
-            -destination "generic/platform=iOS" \
-            -configuration Debug \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            DEVELOPMENT_TEAM="" \
-            2>&1 | tee /tmp/build.log
-          BUILD_EXIT=$?
-
-          echo ""
-          echo "=== 错误摘要 ==="
-          grep -i "error:" /tmp/build.log || echo "(无错误)"
-
-          if [ $BUILD_EXIT -ne 0 ]; then
-            echo ""
-            echo "=== 完整 Swift 错误 ==="
-            grep -i -A5 "error:" /tmp/build.log | head -60
-            exit 1
-          fi
-
-          echo "=== 4. Archive ==="
+          echo "=== 3. Archive ==="
           xcodebuild archive \
             -project DouYinCleaner.xcodeproj \
             -scheme DouYinCleaner \
-            -archivePath ../build/DouYinCleaner.xcarchive \
+            -archivePath build/DouYinCleaner.xcarchive \
             -destination "generic/platform=iOS" \
             -configuration Release \
             CODE_SIGN_IDENTITY="" \
@@ -66,8 +42,11 @@ jobs:
             DEVELOPMENT_TEAM="" \
             -allowProvisioningUpdates
 
+          echo "=== 4. 验证产物 ==="
+          ls -la build/DouYinCleaner.xcarchive/Products/Applications/
+          file build/DouYinCleaner.xcarchive/Products/Applications/DouYinCleaner.app/DouYinCleaner
+
           echo "=== 5. 打包 ==="
-          cd ..
           mkdir -p Payload
           cp -r build/DouYinCleaner.xcarchive/Products/Applications/DouYinCleaner.app Payload/
           zip -qr DouYinCleaner.tipa Payload
@@ -75,10 +54,11 @@ jobs:
           echo "DONE"
 
       - name: Upload IPA
+        if: success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: "Build #${{ github.run_number }}"
-          files: DouYinCleaner.tipa
+          files: DouYinCleaner/DouYinCleaner.tipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
