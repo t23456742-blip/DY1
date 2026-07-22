@@ -1,1 +1,53 @@
-.github/workflows/build.yml
+name: Build TrollStore IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "16.0"
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: cd DouYinCleaner && xcodegen generate
+
+      - name: Build archive
+        run: |
+          cd DouYinCleaner
+          xcodebuild archive \
+            -project DouYinCleaner.xcodeproj \
+            -scheme DouYinCleaner \
+            -archivePath ../build/DouYinCleaner.xcarchive \
+            -destination "generic/platform=iOS" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/DouYinCleaner.xcarchive/Products/Applications/DouYinCleaner.app Payload/
+          zip -qr DouYinCleaner.tipa Payload
+          ls -lh DouYinCleaner.tipa
+
+      - name: Upload IPA
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: "Build #${{ github.run_number }}"
+          files: DouYinCleaner.tipa
