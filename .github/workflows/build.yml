@@ -21,28 +21,23 @@ jobs:
           HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
         run: |
           set -e
-          echo "=== 1. 安装 xcodegen ==="
           brew install xcodegen
-
-          echo "=== 2. 生成工程 ==="
           cd DouYinCleaner
           xcodegen generate
 
-          echo "=== 3. Archive ==="
-          xcodebuild -quiet archive \
+          xcodebuild archive \
             -project DouYinCleaner.xcodeproj \
             -scheme DouYinCleaner \
             -archivePath build/DouYinCleaner.xcarchive \
             -destination "generic/platform=iOS" \
-            -configuration Release \
+            -configuration Debug \
+            SWIFT_COMPILATION_MODE=singlefile \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             DEVELOPMENT_TEAM="" \
             -allowProvisioningUpdates
 
-          echo "=== 4. 打包 ==="
-          ls build/DouYinCleaner.xcarchive/Products/Applications/DouYinCleaner.app/DouYinCleaner
           mkdir -p Payload
           cp -r build/DouYinCleaner.xcarchive/Products/Applications/DouYinCleaner.app Payload/
           zip -qr DouYinCleaner.tipa Payload
